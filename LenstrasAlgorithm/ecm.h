@@ -1,5 +1,4 @@
-#include "../../GeneratePrime/GeneratePrime.cpp"
-#include "../../mpreal.h"
+#include "../GeneratePrime.h"
 
 #include <time.h>
 
@@ -12,23 +11,25 @@ using std::cout;
 using std::endl;
 
 // Solve the congruence a = bx (mod n)
-mpreal solveCongruence(const mpreal& a, const mpreal& b, const mpreal& n);
+mpreal solveCongruence(const mpreal& a, const mpreal& b, const mpreal& n, bool& factorFound);
 
 // On the elliptic curve
 struct Point {
 	mpreal X;
 	mpreal Y;
 	bool infinity;
+	bool done;	// used to pass information when done factoring
 
-	Point() : infinity(false) {}
-	Point(bool i) : infinity(i) {}
+	Point() : infinity(false), done(false) {}
+	Point(bool i) : infinity(i), done(false) {}
 	Point(int digits) {
 		X = getLargeInt(digits);
 		Y = getLargeInt(digits);
 		infinity = false;
+		done = false;
 	}
-	Point(mpreal x, mpreal y) : X(x), Y(y), infinity(false) {}
-	Point(mpreal x, mpreal y, bool i) : X(x), Y(y), infinity(i) {}
+	Point(mpreal x, mpreal y) : X(x), Y(y), infinity(false), done(false) {}
+	Point(mpreal x, mpreal y, bool i) : X(x), Y(y), infinity(i), done(false) {}
 
 	void print() {
 		if (infinity) {
@@ -53,21 +54,30 @@ public:
 
 	Point add(const Point& p1, const Point& p2);
 
-	Point doubleAndAdd(mpreal multiple, const Point& p);
+	Point doubleAndAdd(int multiple, const Point& p);
 
 	void print();
 
 };
 
-Point EllipticCurve::doubleAndAdd(mpreal multiple, const Point& p) {
+Point EllipticCurve::doubleAndAdd(int multiple, const Point& p) {
 	Point product(true);	// Infinity point
 	Point Q(p.X, p.Y);
 	while (multiple > 0) {
 		if (mod(multiple, 2) == 1) {
 			product = add(product, Q);
+			if (product.done) {
+				return product;
+			}
+			--multiple;
 		}
-		Q = add(Q, Q);
-		multiple = multiple / 2;	// floor -> int
+		else {
+			Q = add(Q, Q);
+			if (Q.done) {
+				return Q;
+			}
+			multiple = multiple / 2;	// floor -> int
+		}
 	}
 	return product;
 }
@@ -83,6 +93,7 @@ EllipticCurve::EllipticCurve(const Point& p, const mpreal& n) {
 Point EllipticCurve::add(const Point& p1, const Point& p2) {
 	Point sum;
 	mpreal lambda, numerator, denominator;
+	bool factorFound = false;
 
 	// Consider reordering to skip several checks..
 	if (p1.X == p2.X && p1.Y == -p2.Y) {
@@ -108,16 +119,16 @@ Point EllipticCurve::add(const Point& p1, const Point& p2) {
 	denominator = mod(denominator, N);
 
 	// Need to use extended Euclidean algorithm to compute lambda
-	lambda = solveCongruence(numerator, denominator, N);
-
-	//cout << "numerator: " << numerator << ", denominator: " << denominator << endl;
-	//cout << "lambda: " << lambda << endl;
+	lambda = solveCongruence(numerator, denominator, N, factorFound);
+	if (factorFound) {
+		sum.done = true;
+		return sum;
+	}
 
 	sum.X = (lambda * lambda) - p1.X - p2.X;
 	sum.X = mod(sum.X, N);
 	sum.Y = lambda * (p1.X - sum.X) - p1.Y;
 	sum.Y = mod(sum.Y, N);
-	sum.print();
 	return sum;
 }
 
@@ -126,7 +137,7 @@ void EllipticCurve::print() {
 }
 
 // Solve the congruence a = bx (mod n)
-mpreal solveCongruence(const mpreal& a, const mpreal& b, const mpreal& n) {
+mpreal solveCongruence(const mpreal& a, const mpreal& b, const mpreal& n, bool& factorFound) {
 	// Values to iteratively solve Euclidean algorithm
 	// i.e. find A = gcd(n, b) and x2, y2 such that n*x2 + b*y2 = A
 	mpreal A = n, B = b, q, r, xTemp, yTemp;
@@ -147,17 +158,14 @@ mpreal solveCongruence(const mpreal& a, const mpreal& b, const mpreal& n) {
 		y1 = yTemp;
 	}
 	if (A != 1) {
-		if (A == n) {
-			cout << "Found n as a factor of n :(" << endl;
-			getchar();
-		}
-		cout << "Just found a factor!! "<< A << " divides " << n << endl;
-		cout << "End time: " << double(clock()) / CLOCKS_PER_SEC << endl;
-		getchar();
+		//if (A == n) {
+		//	cout << "Found n as a factor of n :(" << endl;
+		//}
+		factorFound = true;
+		return A;
 	}
 	// x2 and y2 now contain values such that n*x2 + b*y2 = A
 
-	//cout << x2 << " " << y2 << endl;
 
 	mpreal inverse;
 	if (abs(x2) > abs(y2)) {

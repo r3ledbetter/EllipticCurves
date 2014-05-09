@@ -1,6 +1,6 @@
 #include <vector>
 
-#include "../GeneratePrime/GeneratePrime.cpp"
+#include "../GeneratePrime.h"
 #include "../mpreal.h"
 
 using mpfr::mpreal;
@@ -21,7 +21,7 @@ struct Point {
 	mpreal Z;
 	mpreal T;
 
-	Point();
+	Point() {};
 	// Random point
 	Point(int digits) {
 		X = getLargeInt(digits);
@@ -46,9 +46,18 @@ struct Point {
 };
 
 /*** EXTENDED TWISTED EDWARDS CURVE ***/
-// {(X : Y : Z : T) Element of P^3
-// (x, y) -> (x : y : 1 : xy)
+
+// E -> 
+
+// (x, y) -> (x : y : xy : 1)
+// (X : Y : T : Z) -> with Z != 0
+// identity element: (0, 1, 0, 1)
+// negative element: (-X, Y, -T, Z)
+// Given (X : Y : Z) in E, passing to Ee can be performed by computing (XZ, YZ, XY, Z^2)
+// Given (X : Y : T : Z) in Ee, passing to E can be done by ignoring T
+
 // aX^2 + Y^2 = Z^2 + dT^2 and XY = ZT (choose a = 1)
+// aX^2 + Y^2 = 1 + d * X^2 * Y^2 and XY = ZT (choose a = 1)
 class EllipticCurve {
 	vector<Point> knownPoints;
 	mpreal a;
@@ -80,9 +89,29 @@ Point EllipticCurve::doubleAndAdd(int multiple, const Point& p) {
 	return product;
 }
 
+// Given (X1 : Y1 : T1 : Z1) and (X2 : Y2 : T2 : Z2) with Z1, Z2 != 0
 Point EllipticCurve::add(const Point& p1, const Point& p2) {
-	Point p3;	// sum
+	Point sum;	// sum
 
+	sum.X = mod(
+			((p1.X * p2.Y) + (p1.Y * p2.X)) *
+			((p1.Z * p2.Z) - (d * p1.T * p2.T))
+			, N);
+	sum.Y = mod(
+			((p1.Y * p2.Y) - (a * p1.X * p2.X)) *
+			((p1.Z * p2.Z) + (d * p1.T * p2.T))
+			, N);
+	sum.T = mod(
+			((p1.Y * p2.Y) - (a * p1.X * p2.X)) *
+			((p1.X * p2.Y) + (p1.Y * p2.X))
+			, N);
+	sum.Z = mod(
+			((p1.Z * p2.Z) - (d * p1.T * p2.T)) *
+			((p1.Z * p2.Z) + (d * p1.T * p2.T))
+			, N);
+
+
+	/*
 	if (p1.X == p2.X && p1.Y == p2.Y && p1.Z == p2.Z && p1.T == p2.T) {
 		mpreal B = mod((p1.X + p1.Y) * (p1.X + p1.Y), N);
 		mpreal C = mod(p1.X * p1.X, N);
@@ -91,9 +120,9 @@ Point EllipticCurve::add(const Point& p1, const Point& p2) {
 		mpreal F = mod(E + D, N);
 		mpreal H = mod(p1.Z * p1.Z, N);
 		mpreal J = mod(F - (2 * H), N);
-		p3.X = mod((B - C - D) * J, N);
-		p3.Y = mod(F * (E - D), N);
-		p3.Z = mod(F * J, N);
+		sum.X = mod((B - C - D) * J, N);
+		sum.Y = mod(F * (E - D), N);
+		sum.Z = mod(F * J, N);
 	}
 	else {
 		mpreal A = mod(p1.X * p2.X, N);
@@ -104,15 +133,12 @@ Point EllipticCurve::add(const Point& p1, const Point& p2) {
 		mpreal F = mod((p1.X - p1.Y) * (p2.X - p2.Y) + B - A, N);
 		mpreal G = mod(B + (a * A), N);
 		mpreal H = mod(D - C, N);
-		p3.X = mod(E * F, N);
-		p3.Y = mod(G * H, N);
-		p3.Z = mod(F * G, N);
-		p3.T = mod(E * H, N);
+		sum.X = mod(E * F, N);
+		sum.Y = mod(G * H, N);
+		sum.Z = mod(F * G, N);
+		sum.T = mod(E * H, N);
 	}
 
-
-
-	/*
 	mpreal lambda, numerator, denominator;
 	// Consider reordering to skip several checks..
 	if (p1.X == p2.X && p1.Y == -p2.Y) {
@@ -172,7 +198,7 @@ void EllipticCurve::print() {
 
 
 
-
+/*
 // Solve the congruence a = bx (mod n)
 mpreal solveCongruence(const mpreal& a, const mpreal& b, const mpreal& n) {
 	// Values to iteratively solve Euclidean algorithm
@@ -222,3 +248,4 @@ mpreal solveCongruence(const mpreal& a, const mpreal& b, const mpreal& n) {
 	}
 	return mod(inverse * a, n);
 }
+*/

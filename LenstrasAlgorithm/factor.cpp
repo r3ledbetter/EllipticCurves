@@ -1,10 +1,23 @@
 #include <vector>
 #include <time.h>
+#include <utility>	// std::pair
+#include <math.h>	// pow
+#include <fstream>
 
 #include "ecm.h"
 
-int DIGITS = 4;
+using namespace std;
+
+void factor(const mpreal& number);
+void saveResults(int bound, int boundIndex);
+
+int DIGITS = 5;
 vector<int> primePowers;
+vector<int> boundValues;
+vector<mpreal> numbers;
+
+// Store number of curves needed and length of time needed to factor
+vector<pair<int, double> > numCurvesAndTime;
 
 int main() {
 	srand(time(NULL));
@@ -20,47 +33,94 @@ int main() {
 		leastDigits *= 10;
 	}
 
-	mpreal factor1 = getPrime(DIGITS, 10);
-	mpreal factor2 = getPrime(DIGITS, 10);
-	while (factor1 < leastDigits) {
-		factor1 = getPrime(DIGITS, 10);
-	}
-	while (factor2 < leastDigits) {
-		factor2 = getPrime(DIGITS, 10);
+	for (int i = 0; i < 1000; ++i) {
+		// Make sure to generate primes with desired number of digits
+		mpreal factor1 = getPrime(DIGITS, 10);
+		mpreal factor2 = getPrime(DIGITS, 10);
+		while (factor1 < leastDigits) {
+			factor1 = getPrime(DIGITS, 10);
+		}
+		while (factor2 < leastDigits) {
+			factor2 = getPrime(DIGITS, 10);
+		}
+		numbers.push_back(factor1 * factor2);
 	}
 
-	mpreal number = factor1 * factor2;
-
-	int bound = 100000;
-	vector<int> sieveVector;
-	for (int i = 0; i < bound; ++i) {
-		sieveVector.push_back(i);
+	// y = 10^(.1x)
+	for (double x = 10; x <= 50; ++x) {
+		boundValues.push_back(pow(10, 0.1 * x));
 	}
-	sieveVector[1] = 0;
-	// Sieve for prime numbers less than bound
-	for (int p = 2; p < bound; ++p) {
-		if (sieveVector[p] != 0) {
-			int maxPower = p;
-			for (maxPower = p; maxPower < bound; maxPower *= p) {}
-			primePowers.push_back(maxPower);
-			for (int i = 2 * p; i < bound; i += p) {
-				sieveVector[i] = 0;
+
+	// Test
+	for (int i = 0; i < boundValues.size(); ++i) {
+		cout << "Beginning test with bound: " << boundValues[i] << endl;
+		// Clear for fresh start with new bound
+		primePowers.clear();
+		numCurvesAndTime.clear();
+		
+		vector<int> sieveVector;
+		for (int j = 0; j < boundValues[i]; ++j) {
+			sieveVector.push_back(j);
+		}
+		sieveVector[1] = 0;
+		// Sieve for prime numbers less than boundValues[i]
+		for (int p = 2; p < boundValues[i]; ++p) {
+			if (sieveVector[p] != 0) {
+				int maxPower = p;
+				for (maxPower = p; maxPower < boundValues[i]; maxPower *= p) {}
+				primePowers.push_back(maxPower);
+				for (int j = 2 * p; j < boundValues[i]; j += p) {
+					sieveVector[j] = 0;
+				}
 			}
 		}
+		cout << "Time till completion:" << endl;
+		cout << "          |" << endl;
+		for (int j = 0; j < numbers.size(); ++j) {
+			factor(numbers[j]);
+			if (j % 100 == 0) {
+				cout << "*" << flush;
+			}
+		}
+		cout << endl;
+		saveResults(boundValues[i], i);
 	}
+}
 
-	cout << "Start time: " << double(clock()) / CLOCKS_PER_SEC << endl;
+void saveResults(int bound, int boundIndex) {
+	string path;
+	stringstream tostring;
+	tostring << boundIndex << "-" << bound;
+	path = tostring.str();
+	ofstream output;
+	path = "../results/" + path + ".txt";
+	output.open(path.c_str());
+	for (int i = 0; i < numCurvesAndTime.size(); ++i) {
+		output << numCurvesAndTime[i].first << " " << numCurvesAndTime[i].second << "\n";
+	}
+	output.close();
+}
+
+void factor(const mpreal& number) {
+	clock_t t = clock();
 
 	// Loop until finding a curve and point that "fails"
-	while (true) {
+	for (int numCurves = 1; true; ++numCurves) {
 		// Generate random point p = (a, b)
 		Point p(DIGITS);
-		cout << number << endl;
 		EllipticCurve E(p, number);
 
 		for (int i = 0; i < primePowers.size(); ++i) {
-			//p1.print();
 			p = E.doubleAndAdd(primePowers[i], p);
+			// If true, factor was found
+			if (p.done) {
+				t = clock() - t;
+				pair<int, double> record;
+				record.first = numCurves;
+				record.second = ((double)t) / CLOCKS_PER_SEC;
+				numCurvesAndTime.push_back(record);
+				return;
+			}
 		}
 	}
 }
